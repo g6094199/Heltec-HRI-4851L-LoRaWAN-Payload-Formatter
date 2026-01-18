@@ -1,6 +1,6 @@
 # Heltec-HRI-4851L-LoRaWAN-Payload-Formatter
 
-A LoRaWAN ([The Things Network](https://www.thethingsnetwork.org/) and [Chirpstack](https://www.chirpstack.io/)) payload formatter for the [Heltec HRI 4851L](https://heltec.org/project/rs485-lorawan-wireless-converter) ModBus RTU to LoRaWAN converter.
+A LoRaWAN ([The Things Network (TTN)](https://www.thethingsnetwork.org/) and [Chirpstack](https://www.chirpstack.io/)) payload formatter for the [Heltec HRI 4851L](https://heltec.org/project/rs485-lorawan-wireless-converter) ModBus RTU to LoRaWAN converter.
 
 The formater uses the incoming Base64 encoded LoRaWAN message sent by the HRI 4851L and encodes it to the original measument value. The data can be retieved via the TTN mqtt instance.
 
