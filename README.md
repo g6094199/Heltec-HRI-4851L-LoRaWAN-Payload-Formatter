@@ -67,7 +67,7 @@ MAPPING CONFIGURATION
   
   Example:
     
-      1: { ... }   // Device at address 1 \n
+      1: { ... }   // Device at address 1 
       2: { ... }   // Device at address 2
 
 ------------------------------------------------------------
