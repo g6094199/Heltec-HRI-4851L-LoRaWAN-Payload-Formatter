@@ -4,6 +4,8 @@ A LoRaWAN ([The Things Network](https://www.thethingsnetwork.org/) and [Chirpsta
 
 The formater uses the incoming Base64 encoded LoRaWAN message sent by the HRI 4851L and encodes it to the original measument value. The data can be retieved via the TTN mqtt instance.
 
+[Heltec HRI 4851L wiki/doku](https://wiki.heltec.org/docs/devices/lorawan-application/lora-node-devices/hri-485x-rs-485/hri-4851-lorawan/usage-guide)
+
 # Features
 
 - **Dynamic register mapping**
