@@ -2,8 +2,40 @@
 
 A LoRaWAN ([The Things Network](https://www.thethingsnetwork.org/) and [Chirpstack](https://www.chirpstack.io/)) payload formatter for the [Heltec HRI 4851L](https://heltec.org/project/rs485-lorawan-wireless-converter) ModBus RTU to LoRaWAN converter.
 
-The formater uses the incoming Base64 encoded LoRaWAN message and encodes it to 
+The formater uses the incoming Base64 encoded LoRaWAN message and encodes it to the original measument value.
 
+# Features
+
+- **Dynamic register mapping**
+  - Separate mapping per Modbus slave address
+  - Easy to extend for new devices
+
+- **Supported datatypes**
+  - `uint16` – unsigned 16‑bit
+  - `int16` – signed 16‑bit
+  - `uint32` – unsigned 32‑bit
+  - `int32` – signed 32‑bit
+  - `float32` – IEEE754 floating point
+
+- **Endianness handling**
+  - `big` – standard Modbus byte order
+  - `little` – full byte reversal
+  - `mixed` – word‑swapped float32 (common in Modbus devices)
+
+- **Per‑register scaling**
+  - Raw values can be divided by any scale factor
+  - Useful for fixed‑point sensor values
+
+- **Bitmask decoding**
+  - Convert status registers into named boolean flags
+  - Supports any number of bits
+
+- **Automatic fallback**
+  - Unknown registers are decoded as raw `uint16`
+  - Ensures no data is lost
+
+- **TTN‑compatible JavaScript**
+  - Works in TTN V2 and TTN V3 decoder environments
 
 
 
