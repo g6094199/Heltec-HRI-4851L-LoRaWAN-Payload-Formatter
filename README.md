@@ -96,11 +96,11 @@ Meaning of fields:
   SUPPORTED DATATYPES
  ------------------------------------------------------------
 
- *    uint16  → 2 bytes, unsigned
- *    int16   → 2 bytes, signed
- *    uint32  → 4 bytes, unsigned (2 registers)
- *    int32   → 4 bytes, signed (2 registers)
- *    float32 → 4 bytes, IEEE754 (2 registers)
+ *    `uint16`  → unsigned 16‑bit
+ *    `int16`   → 2 bytes, signed 16‑bit
+ *    `uint32`  → 4 bytes, unsigned 32‑bit (2 registers)
+ *    `int32`   → 4 bytes, signed 32‑bit (2 registers)
+ *    `float32` → 4 bytes, IEEE754 floating point (2 registers)
 
  ------------------------------------------------------------
   ENDIANNESS OPTIONS
