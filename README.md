@@ -90,7 +90,7 @@ Meaning of fields:
 - type          : Datatype used to decode the register
 - scale         : Raw value is divided by this number
 - endian        : Byte order used by the device
-- bitmask       : Optional mapping of bits to named flags
+- bitmask       : Optional mapping of boolian bits to named flags
 
  ------------------------------------------------------------
   SUPPORTED DATATYPES
