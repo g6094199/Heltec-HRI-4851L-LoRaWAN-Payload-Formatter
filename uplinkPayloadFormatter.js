@@ -10,16 +10,26 @@
  *  The goal is to provide a flexible, industrial-grade decoder
  *  that can handle heterogeneous Modbus devices connected to
  *  a single LoRaWAN node.
-
-  *  It supports:
- *    - Dynamic register mapping per slave address
- *    - Multiple datatypes (uint16, int16, uint32, int32, float32)
- *    - Endianness control (big, little, mixed)
- *    - Scaling factors
- *    - Bitmask decoding
- *    - Fallback decoding for unknown registers
  *
- *  Payload Structure:
+ *  Supported Features:
+ *  -------------------
+ *  • Dynamic register mapping per Modbus slave address
+ *  • Multiple datatypes:
+ *        - uint16   (unsigned 16-bit)
+ *        - int16    (signed 16-bit)
+ *        - uint32   (unsigned 32-bit)
+ *        - int32    (signed 32-bit)
+ *        - float32  (IEEE754 floating point)
+ *  • Endianness control:
+ *        - "big"     → Standard Modbus big-endian
+ *        - "little"  → Byte-swapped
+ *        - "mixed"   → Word-swapped float32 (common in Modbus)
+ *  • Per-register scaling factors
+ *  • Bitmask decoding for status registers
+ *  • Automatic fallback for unknown registers
+ *
+ *  Payload Structure (Modbus RTU-like):
+ *  ------------------------------------
  *    Byte 0 : Modbus slave address
  *    Byte 1 : Modbus function code (usually 0x03)
  *    Byte 2 : Byte count (number of data bytes)
@@ -27,11 +37,12 @@
  *
  * ============================================================
  *
- *  IMPORTANT:
- *  ----------
- *  ChirpStack ALWAYS provides raw bytes → no Base64 decoding.
- *  TTN SOMETIMES provides Base64 → fallback logic exists but is
- *  commented out to avoid interfering with ChirpStack.
+ *  IMPORTANT PLATFORM DIFFERENCES:
+ *  -------------------------------
+ *  • ChirpStack ALWAYS provides raw bytes → no Base64 decoding.
+ *  • TTN SOMETIMES provides Base64 → fallback logic is included.
+ *
+ *  The TTN fallback logic is kept but can be disabled if needed.
  *
  * ============================================================
  */
@@ -39,15 +50,18 @@
 function decodeUplink(input) {
 
   // ------------------------------------------------------------
-  // 1. Extract raw bytes
+  // 1. Extract raw bytes from the uplink
   // ------------------------------------------------------------
   // ChirpStack ALWAYS provides raw bytes in input.bytes.
   // TTN MAY provide raw bytes OR Base64.
+  //
+  // We start by reading input.bytes directly.
+  // If they are missing or empty, we assume TTN Base64 mode.
   let bytes = input.bytes;
 
   /**
    * ============================================================
-   *  TTN-SPECIFIC FALLBACK (DISABLED FOR CHIRPSTACK)
+   *  TTN-SPECIFIC FALLBACK (ENABLED HERE, BUT CAN BE DISABLED)
    * ============================================================
    *
    *  TTN V3:
@@ -58,14 +72,19 @@ function decodeUplink(input) {
    *    - Sometimes provides Base64 in input.payload_raw
    *    - ChirpStack NEVER uses this field.
    *
-   *  These blocks need to be commented out to avoid breaking ChirpStack.
-   '
+   *  These blocks decode Base64 only if raw bytes are missing.
+   *  This ensures compatibility with TTN while not affecting
+   *  ChirpStack (which always provides raw bytes).
+   *
    * ============================================================
    */
 
-  
-  // TTN V3 Base64 fallback (your requested modification applied)
-  if ((!bytes || bytes.length === 0) && input.uplink_message && input.uplink_message.frm_payload) {
+  // TTN V3 Base64 fallback (classic safe property access)
+  if ((!bytes || bytes.length === 0) &&
+      input.uplink_message &&
+      input.uplink_message.frm_payload) {
+
+    // Convert Base64 → byte array
     bytes = base64ToBytes(input.uplink_message.frm_payload);
   }
 
@@ -73,18 +92,26 @@ function decodeUplink(input) {
   if ((!bytes || bytes.length === 0) && input.payload_raw) {
     bytes = base64ToBytes(input.payload_raw);
   }
-  
 
-  //* ===================== End TTN specific ============================
-
-  // ChirpStack: If bytes are missing → this is a real error. On TTN this is an empty payload
+  // ------------------------------------------------------------
+  // 1b. Final validation of byte availability
+  // ------------------------------------------------------------
+  // ChirpStack ALWAYS provides bytes → missing bytes = error.
+  // TTN MAY send empty payloads → also error.
   if (!bytes || bytes.length === 0) {
-    return { errors: ["No payload bytes found. ChirpStack always provides raw bytes. TTN has no payload"] };
+    return {
+      errors: [
+        "No payload bytes found. ChirpStack always provides raw bytes. TTN may provide empty payloads."
+      ]
+    };
   }
 
   // ------------------------------------------------------------
   // 2. Parse Modbus header (common for TTN + ChirpStack)
   // ------------------------------------------------------------
+  // These first three bytes define the structure of the Modbus
+  // response frame. They are always present in valid payloads.
+  //
   // Byte 0 = Modbus slave address (0–247)
   // Byte 1 = Modbus function code (0x03 = Read Holding Registers)
   // Byte 2 = Byte count (number of data bytes following)
@@ -97,12 +124,17 @@ function decodeUplink(input) {
   // ------------------------------------------------------------
   // Each Modbus slave device may expose different registers,
   // datatypes, scaling rules, and endianness.
+  //
+  // This mapping allows the decoder to interpret the raw bytes
+  // correctly depending on which device responded.
   const deviceMap = {
 
     // ---------------- Device at Modbus Address 1 ----------------
     1: {
+      // Register 0: signed temperature value, scaled by 1000
       0: { name: "temperature", type: "int16",  scale: 1000, endian: "big" },
 
+      // Register 1: status register with bitmask decoding
       1: { name: "status", type: "uint16", scale: 1, endian: "big",
            bitmask: {
              0: "system_ok",
@@ -113,6 +145,7 @@ function decodeUplink(input) {
            }
       },
 
+      // Register 2–3: 32-bit energy counter
       2: { name: "energy_total", type: "uint32", scale: 1, endian: "big" }
     },
 
@@ -124,7 +157,8 @@ function decodeUplink(input) {
     }
   };
 
-  // Select mapping for this slave address
+  // Select mapping for this slave address.
+  // If no mapping exists, fallback decoding will be used.
   const registerMap = deviceMap[slaveAddress] || {};
 
   // Output object for decoded values
@@ -139,7 +173,8 @@ function decodeUplink(input) {
   // ------------------------------------------------------------
   // 4. Decode registers sequentially
   // ------------------------------------------------------------
-  // Continue until all bytes defined by byteCount are consumed
+  // Continue until all bytes defined by byteCount are consumed.
+  // Each register consumes either 2 or 4 bytes depending on type.
   while (offset < 3 + byteCount) {
 
     // Lookup register definition for this index
@@ -148,6 +183,8 @@ function decodeUplink(input) {
     // --------------------------------------------------------
     // Unknown register → fallback to raw uint16
     // --------------------------------------------------------
+    // This ensures that no data is lost even if the mapping
+    // does not define a specific register.
     if (!map) {
       const raw = (bytes[offset] << 8) | bytes[offset + 1];
       result[`register_${regIndex}`] = raw;
