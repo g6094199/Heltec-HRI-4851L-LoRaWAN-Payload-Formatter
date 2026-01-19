@@ -58,13 +58,12 @@ function decodeUplink(input) {
    *    - Sometimes provides Base64 in input.payload_raw
    *    - ChirpStack NEVER uses this field.
    *
-   *  These blocks are commented out to avoid breaking ChirpStack.
-   *  If you want to use this decoder on TTN again, simply
-   *  uncomment teh nex 2 TTN specific blocks.
+   *  These blocks need to be commented out to avoid breaking ChirpStack.
+   '
    * ============================================================
    */
 
-  /*
+  
   // TTN V3 Base64 fallback (your requested modification applied)
   if ((!bytes || bytes.length === 0) && input.uplink_message && input.uplink_message.frm_payload) {
     bytes = base64ToBytes(input.uplink_message.frm_payload);
@@ -74,7 +73,7 @@ function decodeUplink(input) {
   if ((!bytes || bytes.length === 0) && input.payload_raw) {
     bytes = base64ToBytes(input.payload_raw);
   }
-  */
+  
 
   //* ===================== End TTN specific ============================
 
