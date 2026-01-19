@@ -36,8 +36,8 @@ function decodeUplink(input) {
   let bytes = input.bytes;
 
   // If bytes are missing, try TTN V3 base64 field
-  if ((!bytes || bytes.length === 0) && input.uplink_message?.frm_payload) {
-    bytes = base64ToBytes(input.uplink_message.frm_payload);
+  if ((!bytes || bytes.length === 0) && input.uplink_message && input.uplink_message.frm_payload { 
+    bytes = base64ToBytes(input.uplink_message.frm_payload); 
   }
 
   // If still missing, try TTN V2 base64 field
