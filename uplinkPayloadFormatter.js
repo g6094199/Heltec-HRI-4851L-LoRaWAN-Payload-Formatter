@@ -1,6 +1,6 @@
 /**
  * ============================================================
- *  TTN / LoRaWAN Payload Decoder for Modbus Devices
+ *  TTN / ChirpStack LoRaWAN Payload Decoder for Modbus Devices
  * ============================================================
  *
  *  This decoder processes Modbus-over-LoRaWAN uplink frames.
@@ -10,13 +10,14 @@
  *  The goal is to provide a flexible, industrial-grade decoder
  *  that can handle heterogeneous Modbus devices connected to
  *  a single LoRaWAN node.
- *
- *  The decoder supports:
- *    - uint16, int16, uint32, int32, float32
- *    - big-endian, little-endian, mixed-endian (word swap)
- *    - per-register scaling
- *    - bitmask decoding for status registers
- *    - fallback decoding for unknown registers
+
+  *  It supports:
+ *    - Dynamic register mapping per slave address
+ *    - Multiple datatypes (uint16, int16, uint32, int32, float32)
+ *    - Endianness control (big, little, mixed)
+ *    - Scaling factors
+ *    - Bitmask decoding
+ *    - Fallback decoding for unknown registers
  *
  *  Payload Structure:
  *    Byte 0 : Modbus slave address
@@ -25,55 +26,85 @@
  *    Byte 3..N : Register data (2 bytes per register)
  *
  * ============================================================
+ *
+ *  IMPORTANT:
+ *  ----------
+ *  ChirpStack ALWAYS provides raw bytes → no Base64 decoding.
+ *  TTN SOMETIMES provides Base64 → fallback logic exists but is
+ *  commented out to avoid interfering with ChirpStack.
+ *
+ * ============================================================
  */
 
 function decodeUplink(input) {
 
   // ------------------------------------------------------------
-  // 1. Extract raw bytes (TTN V2 or V3)
+  // 1. Extract raw bytes
   // ------------------------------------------------------------
-  // TTN V3 provides decoded bytes in input.bytes OR base64 in uplink_message.frm_payload
+  // ChirpStack ALWAYS provides raw bytes in input.bytes.
+  // TTN MAY provide raw bytes OR Base64.
   let bytes = input.bytes;
 
-  // If bytes are missing, try TTN V3 base64 field
-  if ((!bytes || bytes.length === 0) && input.uplink_message && input.uplink_message.frm_payload { 
-    bytes = base64ToBytes(input.uplink_message.frm_payload); 
+  /**
+   * ============================================================
+   *  TTN-SPECIFIC FALLBACK (DISABLED FOR CHIRPSTACK)
+   * ============================================================
+   *
+   *  TTN V3:
+   *    - Sometimes provides Base64 in input.uplink_message.frm_payload
+   *    - ChirpStack NEVER uses this field.
+   *
+   *  TTN V2:
+   *    - Sometimes provides Base64 in input.payload_raw
+   *    - ChirpStack NEVER uses this field.
+   *
+   *  These blocks are commented out to avoid breaking ChirpStack.
+   *  If you want to use this decoder on TTN again, simply
+   *  uncomment teh nex 2 TTN specific blocks.
+   * ============================================================
+   */
+
+  /*
+  // TTN V3 Base64 fallback (your requested modification applied)
+  if ((!bytes || bytes.length === 0) && input.uplink_message && input.uplink_message.frm_payload) {
+    bytes = base64ToBytes(input.uplink_message.frm_payload);
   }
 
-  // If still missing, try TTN V2 base64 field
+  // TTN V2 Base64 fallback
   if ((!bytes || bytes.length === 0) && input.payload_raw) {
     bytes = base64ToBytes(input.payload_raw);
   }
+  */
 
-  // If no bytes found at all, return an error
+  //* ===================== End TTN specific ============================
+
+  // ChirpStack: If bytes are missing → this is a real error. On TTN this is an empty payload
   if (!bytes || bytes.length === 0) {
-    return { errors: ["No payload bytes found."] };
+    return { errors: ["No payload bytes found. ChirpStack always provides raw bytes. TTN has no payload"] };
   }
 
   // ------------------------------------------------------------
-  // 2. Parse Modbus header
+  // 2. Parse Modbus header (common for TTN + ChirpStack)
   // ------------------------------------------------------------
-  // These three bytes define the Modbus frame structure
-  const slaveAddress = bytes[0];   // Modbus slave ID (0–247)
-  const functionCode = bytes[1];   // Function code (0x03 = Read Holding Registers)
-  const byteCount    = bytes[2];   // Number of data bytes following
+  // Byte 0 = Modbus slave address (0–247)
+  // Byte 1 = Modbus function code (0x03 = Read Holding Registers)
+  // Byte 2 = Byte count (number of data bytes following)
+  const slaveAddress = bytes[0];
+  const functionCode = bytes[1];
+  const byteCount    = bytes[2];
 
   // ------------------------------------------------------------
-  // 3. Dynamic device mapping based on slave address
+  // 3. Device-specific register mapping
   // ------------------------------------------------------------
-  // Each Modbus device type has its own register layout.
-  // The decoder selects the correct mapping based on slaveAddress.
+  // Each Modbus slave device may expose different registers,
+  // datatypes, scaling rules, and endianness.
   const deviceMap = {
 
-    // --------------------------------------------------------
-    // Device at Modbus Address 1
-    // --------------------------------------------------------
+    // ---------------- Device at Modbus Address 1 ----------------
     1: {
-      // Register 0: signed 16-bit temperature, scaled by 1000
       0: { name: "temperature", type: "int16",  scale: 1000, endian: "big" },
 
-      // Register 1: uint16 status register with bitmask decoding
-      1: { name: "status",      type: "uint16", scale: 1,    endian: "big",
+      1: { name: "status", type: "uint16", scale: 1, endian: "big",
            bitmask: {
              0: "system_ok",
              1: "heater_on",
@@ -83,26 +114,18 @@ function decodeUplink(input) {
            }
       },
 
-      // Register 2–3: uint32 energy counter
       2: { name: "energy_total", type: "uint32", scale: 1, endian: "big" }
     },
 
-    // --------------------------------------------------------
-    // Device at Modbus Address 2
-    // --------------------------------------------------------
+    // ---------------- Device at Modbus Address 2 ----------------
     2: {
-      // Register 0: CO₂ concentration (uint16)
       0: { name: "co2",   type: "uint16", scale: 1, endian: "big" },
-
-      // Register 1–2: VOC sensor value (float32, word-swapped)
       1: { name: "voc",   type: "float32", scale: 1, endian: "mixed" },
-
-      // Register 3–4: signed 32-bit power value, scaled by 10
       3: { name: "power", type: "int32", scale: 10, endian: "little" }
     }
   };
 
-  // Select mapping for this specific device
+  // Select mapping for this slave address
   const registerMap = deviceMap[slaveAddress] || {};
 
   // Output object for decoded values
@@ -127,7 +150,6 @@ function decodeUplink(input) {
     // Unknown register → fallback to raw uint16
     // --------------------------------------------------------
     if (!map) {
-      // Read 16-bit unsigned value
       const raw = (bytes[offset] << 8) | bytes[offset + 1];
       result[`register_${regIndex}`] = raw;
 
@@ -143,26 +165,22 @@ function decodeUplink(input) {
     // --------------------------------------------------------
     if (map.type === "uint16") {
 
-      // Extract high and low bytes
       let hi = bytes[offset];
       let lo = bytes[offset + 1];
 
-      // Swap bytes if little-endian
+      // Endianness handling
       if (map.endian === "little") [hi, lo] = [lo, hi];
 
-      // Combine into 16-bit unsigned integer
       rawValue = (hi << 8) | lo;
 
-      // If bitmask exists, decode individual bits
+      // Bitmask decoding
       if (map.bitmask) {
         const statusObj = {};
         for (const bit in map.bitmask) {
-          const name = map.bitmask[bit];
-          statusObj[name] = (rawValue & (1 << bit)) !== 0;
+          statusObj[map.bitmask[bit]] = (rawValue & (1 << bit)) !== 0;
         }
         result[map.name] = statusObj;
       } else {
-        // Apply scaling
         result[map.name] = rawValue / map.scale;
       }
 
@@ -177,13 +195,11 @@ function decodeUplink(input) {
       let hi = bytes[offset];
       let lo = bytes[offset + 1];
 
-      // Swap if little-endian
       if (map.endian === "little") [hi, lo] = [lo, hi];
 
-      // Combine bytes
       rawValue = (hi << 8) | lo;
 
-      // Convert to signed 16-bit
+      // Convert to signed
       if (rawValue & 0x8000) rawValue -= 0x10000;
 
       result[map.name] = rawValue / map.scale;
@@ -201,12 +217,8 @@ function decodeUplink(input) {
       let b2 = bytes[offset + 2];
       let b3 = bytes[offset + 3];
 
-      // Reverse byte order if little-endian
-      if (map.endian === "little") {
-        [b0, b1, b2, b3] = [b3, b2, b1, b0];
-      }
+      if (map.endian === "little") [b0, b1, b2, b3] = [b3, b2, b1, b0];
 
-      // Combine into 32-bit unsigned integer
       rawValue = (b0 * 16777216) + (b1 << 16) + (b2 << 8) + b3;
 
       result[map.name] = rawValue / map.scale;
@@ -224,18 +236,12 @@ function decodeUplink(input) {
       let b2 = bytes[offset + 2];
       let b3 = bytes[offset + 3];
 
-      // Reverse byte order if little-endian
-      if (map.endian === "little") {
-        [b0, b1, b2, b3] = [b3, b2, b1, b0];
-      }
+      if (map.endian === "little") [b0, b1, b2, b3] = [b3, b2, b1, b0];
 
-      // Combine into 32-bit signed integer
       rawValue = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
 
       // Convert to signed 32-bit
-      if (rawValue & 0x80000000) {
-        rawValue -= 0x100000000;
-      }
+      if (rawValue & 0x80000000) rawValue -= 0x100000000;
 
       result[map.name] = rawValue / map.scale;
 
@@ -252,17 +258,9 @@ function decodeUplink(input) {
       let b2 = bytes[offset + 2];
       let b3 = bytes[offset + 3];
 
-      // Little-endian → reverse all bytes
-      if (map.endian === "little") {
-        [b0, b1, b2, b3] = [b3, b2, b1, b0];
-      }
+      if (map.endian === "little") [b0, b1, b2, b3] = [b3, b2, b1, b0];
+      if (map.endian === "mixed")  [b0, b1, b2, b3] = [b2, b3, b0, b1];
 
-      // Mixed-endian → word swap (common in Modbus)
-      if (map.endian === "mixed") {
-        [b0, b1, b2, b3] = [b2, b3, b0, b1];
-      }
-
-      // Use DataView to decode IEEE754 float
       const buf = new ArrayBuffer(4);
       const view = new DataView(buf);
 
@@ -271,18 +269,16 @@ function decodeUplink(input) {
       view.setUint8(2, b2);
       view.setUint8(3, b3);
 
-      const floatVal = view.getFloat32(0, false); // big-endian inside buffer
-      result[map.name] = floatVal / map.scale;
+      result[map.name] = view.getFloat32(0, false) / map.scale;
 
       offset += 4;
     }
 
-    // Move to next logical register index
     regIndex++;
   }
 
   // ------------------------------------------------------------
-  // 5. Return decoded data in TTN format
+  // 5. Return decoded data (same for TTN + ChirpStack)
   // ------------------------------------------------------------
   return {
     data: {
@@ -294,8 +290,8 @@ function decodeUplink(input) {
 }
 
 /**
- * Convert Base64 string → byte array
- * Used for TTN V2 and V3 compatibility.
+ * Base64 → bytes
+ * Only needed for TTN, NOT for ChirpStack.
  */
 function base64ToBytes(b64) {
   const binary = atob(b64);
