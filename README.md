@@ -1,8 +1,8 @@
-# Heltec HRI 4851L LoRaWAN up-/downlink Payload Formatter for TTN & Chirpstack
+# Heltec HRI 4851L ModBUS to LoRaWAN Gateway up-/downlink Payload Formatter for TTN & Chirpstack
 
 ![Heltec HRI 4851L](https://heltec.org/wp-content/uploads/2023/05/4851_1-500x500.png "Heltec HRI 4851L")
 
-A LoRaWAN ([The Things Network (TTN)](https://www.thethingsnetwork.org/) and [Chirpstack](https://www.chirpstack.io/)) payload formatter for the [Heltec HRI 4851L](https://heltec.org/project/rs485-lorawan-wireless-converter) ModBus RTU to LoRaWAN converter.
+A LoRaWAN ([The Things Network (TTN)](https://www.thethingsnetwork.org/) and [Chirpstack](https://www.chirpstack.io/)) payload decoder for the [Heltec HRI 4851L](https://heltec.org/project/rs485-lorawan-wireless-converter) ModBus RTU to LoRaWAN converter.
 
 The uplink formatter uses the incoming Base64 encoded LoRaWAN message sent by the HRI 4851L and encodes it to the original measument value. The data can be retieved via the TTN mqtt instance. The downlink formatter can send messages to ModBus slaves transmitted by mqtt.
 
